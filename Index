@@ -118,7 +118,7 @@
 
 <script>
 // ===== CONFIG =====
-const APPS_SCRIPT_URL = 'PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE';
+const APPS_SCRIPT_URL = const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzgPm0L1zI9wgg4dQynZPzd2-qaGukmsob4u5X0QpUvGw4RU6ViX7B9L5DE45so2q5V/exec';
 
 // ===== STATE =====
 let submitted = 0;
