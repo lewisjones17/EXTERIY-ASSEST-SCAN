@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dante USB Scanner</title>
+<style>
+  :root{
+    --bg:#0a0d12; --surface:#12161f; --border:#1e2535;
+    --accent:#3ddc97; --accent2:#2bb6e8; --dim:#3ddc9733;
+    --text:#eef1f6; --muted:#5a6278; --danger:#ff6b6b;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text); min-height:100vh;
+    font-family:'SF Mono','Fira Code','Consolas',monospace;
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:center; padding:24px;
+  }
+  .header{text-align:center; margin-bottom:40px;}
+  .logo{font-size:11px; letter-spacing:.25em; text-transform:uppercase; color:var(--muted); margin-bottom:10px;}
+  h1{
+    font-size:32px; font-weight:700; letter-spacing:-.02em;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .panel{
+    width:100%; max-width:520px; background:var(--surface);
+    border:1px solid var(--border); border-radius:16px; padding:32px;
+    display:flex; flex-direction:column; gap:24px;
+  }
+  .field{display:flex; flex-direction:column; gap:8px;}
+  .field-label{
+    font-size:10px; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--muted); display:flex; justify-content:space-between;
+  }
+  .field-step{font-size:10px; color:var(--accent); opacity:0; transition:opacity .2s;}
+  .field.active .field-step{opacity:1;}
+  input{
+    background:var(--bg); border:1px solid var(--border); border-radius:10px;
+    color:var(--text); font-family:inherit; font-size:18px; font-weight:600;
+    padding:16px 18px; outline:none; transition:border-color .15s, box-shadow .15s;
+    letter-spacing:.04em; width:100%;
+  }
+  input::placeholder{color:var(--muted); font-weight:400; font-size:15px;}
+  .field.active input{border-color:var(--accent); box-shadow:0 0 0 3px var(--dim);}
+  .field.done input{border-color:#2a3545; color:var(--muted);}
+  .divider{
+    display:flex; align-items:center; gap:12px; color:var(--muted);
+    font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  }
+  .divider::before,.divider::after{content:''; flex:1; height:1px; background:var(--border);}
+  .status-bar{
+    display:flex; align-items:center; gap:10px; padding:12px 16px;
+    background:var(--bg); border:1px solid var(--border); border-radius:10px;
+    font-size:13px; color:var(--muted); min-height:48px; transition:border-color .2s;
+  }
+  .status-bar.success{border-color:var(--accent); color:var(--accent);}
+  .status-bar.error{border-color:var(--danger); color:var(--danger);}
+  .status-bar.scanning{border-color:var(--accent2); color:var(--accent2);}
+  .status-dot{width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0;}
+  .status-bar.success .status-dot{background:var(--accent); box-shadow:0 0 6px var(--accent);}
+  .status-bar.error .status-dot{background:var(--danger);}
+  .status-bar.scanning .status-dot{background:var(--accent2); animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .manual-row{display:flex; gap:10px;}
+  .btn{
+    flex:1; padding:14px; border:1px solid var(--border); border-radius:10px;
+    background:transparent; color:var(--muted); font-family:inherit;
+    font-size:13px; font-weight:600; letter-spacing:.05em; cursor:pointer;
+    transition:all .15s; text-transform:uppercase;
+  }
+  .btn:hover{border-color:var(--accent); color:var(--accent); background:var(--dim);}
+  .btn-submit{border-color:var(--accent); color:var(--accent); background:var(--dim);}
+  .btn-submit:hover{background:var(--accent); color:#06140f;}
+  .counter{margin-top:20px; text-align:center; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);}
+  .counter span{color:var(--accent); font-size:16px; font-weight:700;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Dante Audio // USB Scanner</div>
+  <h1>DeviceSnap</h1>
+</div>
+
+<div class="panel">
+  <div class="field active" id="field-device">
+    <div class="field-label">
+      Device ID / Barcode
+      <span class="field-step">← Scan now</span>
+    </div>
+    <input id="deviceInput" type="text" placeholder="Scan or type device ID…" autocomplete="off" spellcheck="false">
+  </div>
+
+  <div class="divider">then</div>
+
+  <div class="field" id="field-mac">
+    <div class="field-label">
+      MAC Address
+      <span class="field-step">← Scan now</span>
+    </div>
+    <input id="macInput" type="text" placeholder="Scan or type MAC address…" autocomplete="off" spellcheck="false">
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="status-dot"></div>
+    <span id="statusText">Ready — scan Device ID to begin</span>
+  </div>
+
+  <div class="manual-row">
+    <button class="btn" id="btnClear">Clear</button>
+    <button class="btn btn-submit" id="btnSubmit">Submit</button>
+  </div>
+</div>
+
+<div class="counter">Submitted this session: <span id="counter">0</span></div>
+
+<script>
+// ===== CONFIG =====
+const APPS_SCRIPT_URL = 'PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE';
+
+// ===== STATE =====
+let submitted = 0;
+let submitting = false;
+
+// ===== ELEMENTS =====
+const deviceInput = document.getElementById('deviceInput');
+const macInput    = document.getElementById('macInput');
+const fieldDevice = document.getElementById('field-device');
+const fieldMac    = document.getElementById('field-mac');
+const statusBar   = document.getElementById('statusBar');
+const statusText  = document.getElementById('statusText');
+const counter     = document.getElementById('counter');
+
+// ===== FOCUS MANAGEMENT =====
+function setActive(field){
+  fieldDevice.classList.remove('active','done');
+  fieldMac.classList.remove('active','done');
+  if (field === 'device'){
+    fieldDevice.classList.add('active');
+    if (macInput.value) fieldMac.classList.add('done');
+    deviceInput.focus();
+  } else {
+    fieldMac.classList.add('active');
+    if (deviceInput.value) fieldDevice.classList.add('done');
+    macInput.focus();
+  }
+}
+
+function setStatus(msg, type=''){
+  statusBar.className = 'status-bar' + (type ? ' '+type : '');
+  statusText.textContent = msg;
+}
+
+// ===== DEVICE ID — Enter advances to MAC =====
+deviceInput.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const val = deviceInput.value.trim();
+  if (!val){ setStatus('Scan or type a Device ID first', 'error'); return; }
+  setActive('mac');
+  setStatus('Device ID captured — scan MAC address');
+});
+
+// ===== MAC ADDRESS — Enter submits =====
+macInput.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const val = macInput.value.trim();
+  if (!val){ setStatus('Scan or type a MAC address first', 'error'); return; }
+  if (!deviceInput.value.trim()){ setStatus('Device ID is missing', 'error'); setActive('device'); return; }
+  submit();
+});
+
+// ===== SUBMIT =====
+async function submit(){
+  if (submitting) return;
+  const deviceId = deviceInput.value.trim();
+  const mac = macInput.value.trim();
+
+  if (APPS_SCRIPT_URL.includes('PASTE_YOUR')){
+    setStatus('Set APPS_SCRIPT_URL in the file first', 'error');
+    return;
+  }
+
+  submitting = true;
+  setStatus('Sending…', 'scanning');
+
+  try{
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({ deviceId, macAddress: mac })
+    });
+    submitted++;
+    counter.textContent = submitted;
+    setStatus('Sent! (' + deviceId + ' / ' + mac + ')', 'success');
+    deviceInput.value = '';
+    macInput.value = '';
+    fieldDevice.classList.remove('done');
+    fieldMac.classList.remove('done');
+    setActive('device');
+  } catch(err){
+    setStatus('Send failed — check connection', 'error');
+  } finally {
+    submitting = false;
+  }
+}
+
+// ===== MANUAL BUTTONS =====
+document.getElementById('btnClear').addEventListener('click', () => {
+  deviceInput.value = ''; macInput.value = '';
+  fieldDevice.classList.remove('done'); fieldMac.classList.remove('done');
+  setStatus('Ready — scan Device ID to begin');
+  setActive('device');
+});
+
+document.getElementById('btnSubmit').addEventListener('click', () => {
+  if (deviceInput.value.trim() && macInput.value.trim()) submit();
+  else setStatus('Fill in both fields first', 'error');
+});
+
+// Keep focus on the active field if clicking outside inputs/buttons
+document.addEventListener('click', e => {
+  if (!e.target.matches('input,button')){
+    fieldMac.classList.contains('active') ? macInput.focus() : deviceInput.focus();
+  }
+});
+
+deviceInput.focus();
+</script>
+</body>
+</html>
